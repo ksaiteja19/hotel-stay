@@ -1,0 +1,31 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+
+# Test results
+TestResults/
+*.trx
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Secrets (none should ever be committed)
+appsettings.*.local.json
+.env
+
+# React
+node_modules/
+dist/
+.env
