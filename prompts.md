@@ -53,21 +53,42 @@ strictly higher-trust document than a national ID), only rejecting "National ID 
 an international destination." This wasn't explicit in the brief; flagged as an
 assumption in README.md rather than silently building it in.
 
-## 4. Catching a JSON serialization bug
+## 4. Catching JSON serialization/deserialization bugs
 
 **Prompt (paraphrased, mid-build):** "Review Program.cs and the test project for
 enum serialization issues — minimal APIs use System.Text.Json by default, which
 serializes enums as integers, not strings."
 
-**This was a real catch.** The first draft had `RoomType`/`CancellationPolicy`/
-`DocumentType` as plain C# enums with no `JsonStringEnumConverter` configured. That
-would have shipped numeric enum values (`0`, `1`, `2`) to the frontend, which expects
-string literals (`"Standard"`, `"FreeCancellation"`) per `spec.md` and the TypeScript
-types. Fixed by registering `JsonStringEnumConverter` via `ConfigureHttpJsonOptions`
-in `Program.cs`, and updated the integration tests to use matching
-`JsonSerializerOptions` when deserializing (the test `HttpClient`'s
-`ReadFromJsonAsync`/`PostAsJsonAsync` don't inherit the server's configured options
-automatically — they need to be passed explicitly).
+The first draft had `RoomType`/`CancellationPolicy`/`DocumentType` as plain C# enums
+with no `JsonStringEnumConverter` configured. That would have shipped numeric enum
+values (`0`, `1`, `2`) to the frontend, which expects string literals (`"Standard"`,
+`"FreeCancellation"`) per `spec.md` and the TypeScript types. Fixed by registering
+`JsonStringEnumConverter` via `ConfigureHttpJsonOptions` in `Program.cs`.
+
+**A second, more serious bug in the same area surfaced only when the tests were
+actually run** (this environment couldn't run `dotnet test` directly — see
+`reflection.md` §1 — so this one wasn't caught until the person running the
+challenge executed it themselves and shared the failure output). The integration
+test client's shared `JsonSerializerOptions` registered the enum converter but never
+set `PropertyNameCaseInsensitive = true`. ASP.NET's default HTTP JSON options
+serialize to **camelCase** (`roomId`, `ratePerNight`), but the C# records use
+**PascalCase** properties (`RoomId`, `RatePerNight`), and `System.Text.Json` is
+case-sensitive by default. Every non-enum property was silently deserializing to its
+type's default (`""`, `0`, `null`) instead of throwing — which is the genuinely
+dangerous part: `Search_RoomTypeFilter_OnlyReturnsMatchingRooms` failed loudly (every
+room showed `RoomType = Standard` instead of `Suite`, because the JSON's `roomType`
+key never bound to anything), but `Search_ResultsOrderedByTotalPriceAscending` was
+passing for the wrong reason — `TotalPrice` deserializing to `0` for every room makes
+`[0,0,0,0]` trivially "sorted." A false-positive green test is worse than a failing
+one. Fixed with `PropertyNameCaseInsensitive = true` on the shared test options
+object, which covers both directions regardless of which side's naming policy
+changes later.
+
+**Takeaway documented for real:** a model-level review (reading the code) caught the
+enum-as-integer issue, but the case-sensitivity issue could only be caught by
+actually executing the tests against a real server — config-shaped bugs like JSON
+option mismatches between a server and its test client are exactly the category that
+survives code review and only shows up at runtime.
 
 ## 5. C# collection-expression ternary bug
 

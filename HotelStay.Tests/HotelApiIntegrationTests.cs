@@ -12,10 +12,12 @@ public class HotelApiIntegrationTests : IClassFixture<WebApplicationFactory<Prog
 {
     private readonly HttpClient _client;
 
-    // Mirrors the JsonStringEnumConverter registered in Program.cs so the test
-    // client deserializes "Standard" / "Passport" etc. instead of expecting ints.
+    // Mirrors the server's HTTP JSON options (camelCase property names + string
+    // enums) so the test client deserializes responses correctly instead of
+    // silently falling back to default values for every property.
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        PropertyNameCaseInsensitive = true,
         Converters = { new JsonStringEnumConverter() },
     };
 
